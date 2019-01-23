@@ -44,8 +44,10 @@ import android.util.Pair;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.MenuItem;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewParent;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.ImageView;
@@ -53,9 +55,10 @@ import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.RatingBar;
 import android.widget.TextView;
-
+import com.hippo.android.resource.AttrResources;
 import com.hippo.beerbelly.BeerBelly;
 import com.hippo.drawable.RoundSideRectDrawable;
+import com.hippo.drawerlayout.DrawerLayout;
 import com.hippo.ehviewer.AppConfig;
 import com.hippo.ehviewer.EhApplication;
 import com.hippo.ehviewer.EhDB;
@@ -66,6 +69,7 @@ import com.hippo.ehviewer.client.EhCacheKeyFactory;
 import com.hippo.ehviewer.client.EhClient;
 import com.hippo.ehviewer.client.EhFilter;
 import com.hippo.ehviewer.client.EhRequest;
+import com.hippo.ehviewer.client.EhTagDatabase;
 import com.hippo.ehviewer.client.EhUrl;
 import com.hippo.ehviewer.client.EhUtils;
 import com.hippo.ehviewer.client.data.GalleryComment;
@@ -101,14 +105,12 @@ import com.hippo.widget.LoadImageView;
 import com.hippo.widget.ObservedTextView;
 import com.hippo.widget.ProgressView;
 import com.hippo.widget.SimpleGridAutoSpanLayout;
+import com.hippo.yorozuya.AssertUtils;
 import com.hippo.yorozuya.FileUtils;
 import com.hippo.yorozuya.IOUtils;
 import com.hippo.yorozuya.IntIdGenerator;
 import com.hippo.yorozuya.SimpleHandler;
 import com.hippo.yorozuya.ViewUtils;
-
-import junit.framework.Assert;
-
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -409,7 +411,7 @@ public class GalleryDetailScene extends BaseScene implements View.OnClickListene
         long gid = getGid();
         if (gid != -1) {
             Context context = getContext2();
-            Assert.assertNotNull(context);
+            AssertUtils.assertNotNull(context);
             mDownloadState = EhApplication.getDownloadManager(context).getDownloadState(gid);
         } else {
             mDownloadState = DownloadInfo.STATE_INVALID;
@@ -424,13 +426,43 @@ public class GalleryDetailScene extends BaseScene implements View.OnClickListene
         mViewTransition = new ViewTransition(mainView, progressView, mTip);
 
         Context context = getContext2();
-        Assert.assertNotNull(context);
+        AssertUtils.assertNotNull(context);
 
-        Drawable drawable = DrawableManager.getDrawable(context, R.drawable.big_weird_face);
+        View actionsScrollView = ViewUtils.$$(view, R.id.actions_scroll_view);
+        setDrawerGestureBlocker(new DrawerLayout.GestureBlocker() {
+            private void transformPointToViewLocal(int[] point, View child) {
+                ViewParent viewParent = child.getParent();
+
+                while (viewParent instanceof View) {
+                    View view = (View) viewParent;
+                    point[0] += view.getScrollX() - child.getLeft();
+                    point[1] += view.getScrollY() - child.getTop();
+
+                    if (view instanceof DrawerLayout) {
+                        break;
+                    }
+
+                    child = view;
+                    viewParent = child.getParent();
+                }
+            }
+
+            @Override
+            public boolean shouldBlockGesture(MotionEvent ev) {
+                int[] point = new int[] {(int) ev.getX(), (int) ev.getY()};
+                transformPointToViewLocal(point, actionsScrollView);
+                return !isDrawersVisible()
+                    && point[0] > 0 && point[0] < actionsScrollView.getWidth()
+                    && point[1] > 0 && point[1] < actionsScrollView.getHeight();
+            }
+        });
+
+        Drawable drawable = DrawableManager.getVectorDrawable(context, R.drawable.big_sad_pandroid);
         drawable.setBounds(0, 0, drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight());
         mTip.setCompoundDrawables(null, drawable, null, null);
         mTip.setOnClickListener(this);
 
+        boolean isDarkTheme = !AttrResources.getAttrBoolean(context, R.attr.isLightTheme);
         mHeader = ViewUtils.$$(mainView, R.id.header);
         mColorBg = ViewUtils.$$(mHeader, R.id.color_bg);
         mThumb = (LoadImageView) ViewUtils.$$(mHeader, R.id.thumb);
@@ -441,9 +473,9 @@ public class GalleryDetailScene extends BaseScene implements View.OnClickListene
         mActionGroup = (ViewGroup) ViewUtils.$$(mHeader, R.id.action_card);
         mDownload = (TextView) ViewUtils.$$(mActionGroup, R.id.download);
         mRead = ViewUtils.$$(mActionGroup, R.id.read);
-        Ripple.addRipple(mOtherActions, false);
-        Ripple.addRipple(mDownload, false);
-        Ripple.addRipple(mRead, false);
+        Ripple.addRipple(mOtherActions, isDarkTheme);
+        Ripple.addRipple(mDownload, isDarkTheme);
+        Ripple.addRipple(mRead, isDarkTheme);
         mUploader.setOnClickListener(this);
         mCategory.setOnClickListener(this);
         mOtherActions.setOnClickListener(this);
@@ -462,7 +494,7 @@ public class GalleryDetailScene extends BaseScene implements View.OnClickListene
         mSize = (TextView) ViewUtils.$$(mInfo, R.id.size);
         mPosted = (TextView) ViewUtils.$$(mInfo, R.id.posted);
         mFavoredTimes = (TextView) ViewUtils.$$(mInfo, R.id.favoredTimes);
-        Ripple.addRipple(mInfo, false);
+        Ripple.addRipple(mInfo, isDarkTheme);
         mInfo.setOnClickListener(this);
 
         mActions = ViewUtils.$$(belowHeader, R.id.actions);
@@ -477,13 +509,13 @@ public class GalleryDetailScene extends BaseScene implements View.OnClickListene
         mRate = (TextView) ViewUtils.$$(mActions, R.id.rate);
         mSimilar = (TextView) ViewUtils.$$(mActions, R.id.similar);
         mSearchCover = (TextView) ViewUtils.$$(mActions, R.id.search_cover);
-        Ripple.addRipple(mHeartGroup, false);
-        Ripple.addRipple(mTorrent, false);
-        Ripple.addRipple(mArchive, false);
-        Ripple.addRipple(mShare, false);
-        Ripple.addRipple(mRate, false);
-        Ripple.addRipple(mSimilar, false);
-        Ripple.addRipple(mSearchCover, false);
+        Ripple.addRipple(mHeartGroup, isDarkTheme);
+        Ripple.addRipple(mTorrent, isDarkTheme);
+        Ripple.addRipple(mArchive, isDarkTheme);
+        Ripple.addRipple(mShare, isDarkTheme);
+        Ripple.addRipple(mRate, isDarkTheme);
+        Ripple.addRipple(mSimilar, isDarkTheme);
+        Ripple.addRipple(mSearchCover, isDarkTheme);
         mHeartGroup.setOnClickListener(this);
         mTorrent.setOnClickListener(this);
         mArchive.setOnClickListener(this);
@@ -498,13 +530,13 @@ public class GalleryDetailScene extends BaseScene implements View.OnClickListene
 
         mComments = (LinearLayout) ViewUtils.$$(belowHeader, R.id.comments);
         mCommentsText = (TextView) ViewUtils.$$(mComments, R.id.comments_text);
-        Ripple.addRipple(mComments, false);
+        Ripple.addRipple(mComments, isDarkTheme);
         mComments.setOnClickListener(this);
 
         mPreviews = ViewUtils.$$(belowHeader, R.id.previews);
         mGridLayout = (SimpleGridAutoSpanLayout) ViewUtils.$$(mPreviews, R.id.grid_layout);
         mPreviewText = (TextView) ViewUtils.$$(mPreviews, R.id.preview_text);
-        Ripple.addRipple(mPreviews, false);
+        Ripple.addRipple(mPreviews, isDarkTheme);
         mPreviews.setOnClickListener(this);
 
         mProgress = ViewUtils.$$(mainView, R.id.progress);
@@ -543,8 +575,10 @@ public class GalleryDetailScene extends BaseScene implements View.OnClickListene
         super.onDestroyView();
 
         Context context = getContext2();
-        Assert.assertNotNull(context);
+        AssertUtils.assertNotNull(context);
         EhApplication.getDownloadManager(context).removeDownloadInfoListener(this);
+
+        setDrawerGestureBlocker(null);
 
         mTip = null;
         mViewTransition = null;
@@ -600,7 +634,7 @@ public class GalleryDetailScene extends BaseScene implements View.OnClickListene
 
     private boolean prepareData() {
         Context context = getContext2();
-        Assert.assertNotNull(context);
+        AssertUtils.assertNotNull(context);
 
         if (mGalleryDetail != null) {
             return true;
@@ -653,21 +687,21 @@ public class GalleryDetailScene extends BaseScene implements View.OnClickListene
     }
 
     private void ensureActionDrawable(Context context) {
-        Drawable heart = DrawableManager.getDrawable(context, R.drawable.v_heart_primary_x48);
+        Drawable heart = DrawableManager.getVectorDrawable(context, R.drawable.v_heart_primary_x48);
         setActionDrawable(mHeart, heart);
-        Drawable heartOutline = DrawableManager.getDrawable(context, R.drawable.v_heart_outline_primary_x48);
+        Drawable heartOutline = DrawableManager.getVectorDrawable(context, R.drawable.v_heart_outline_primary_x48);
         setActionDrawable(mHeartOutline, heartOutline);
-        Drawable torrent = DrawableManager.getDrawable(context, R.drawable.v_utorrent_primary_x48);
+        Drawable torrent = DrawableManager.getVectorDrawable(context, R.drawable.v_utorrent_primary_x48);
         setActionDrawable(mTorrent, torrent);
-        Drawable archive = DrawableManager.getDrawable(context, R.drawable.v_archive_primary_x48);
+        Drawable archive = DrawableManager.getVectorDrawable(context, R.drawable.v_archive_primary_x48);
         setActionDrawable(mArchive, archive);
-        Drawable share = DrawableManager.getDrawable(context, R.drawable.v_share_primary_x48);
+        Drawable share = DrawableManager.getVectorDrawable(context, R.drawable.v_share_primary_x48);
         setActionDrawable(mShare, share);
-        Drawable rate = DrawableManager.getDrawable(context, R.drawable.v_thumb_up_primary_x48);
+        Drawable rate = DrawableManager.getVectorDrawable(context, R.drawable.v_thumb_up_primary_x48);
         setActionDrawable(mRate, rate);
-        Drawable similar = DrawableManager.getDrawable(context, R.drawable.v_similar_primary_x48);
+        Drawable similar = DrawableManager.getVectorDrawable(context, R.drawable.v_similar_primary_x48);
         setActionDrawable(mSimilar, similar);
-        Drawable searchCover = DrawableManager.getDrawable(context, R.drawable.v_file_find_primary_x48);
+        Drawable searchCover = DrawableManager.getVectorDrawable(context, R.drawable.v_file_find_primary_x48);
         setActionDrawable(mSearchCover, searchCover);
     }
 
@@ -724,7 +758,7 @@ public class GalleryDetailScene extends BaseScene implements View.OnClickListene
         }
 
         if ((oldState == STATE_INIT || oldState == STATE_FAILED || oldState == STATE_REFRESH) &&
-                (state == STATE_NORMAL || state == STATE_REFRESH_HEADER)) {
+                (state == STATE_NORMAL || state == STATE_REFRESH_HEADER) && AttrResources.getAttrBoolean(getContext2(), R.attr.isLightTheme)) {
             if (!createCircularReveal()) {
                 SimpleHandler.getInstance().post(new Runnable() {
                     @Override
@@ -766,6 +800,11 @@ public class GalleryDetailScene extends BaseScene implements View.OnClickListene
 
         if (gd.isFavorited || EhDB.containLocalFavorites(gd.gid)) {
             mHeart.setVisibility(View.VISIBLE);
+            if (gd.favoriteName == null) {
+                mHeart.setText(R.string.local_favorites);
+            } else {
+                mHeart.setText(gd.favoriteName);
+            }
             mHeartOutline.setVisibility(View.GONE);
         } else {
             mHeart.setVisibility(View.GONE);
@@ -785,7 +824,7 @@ public class GalleryDetailScene extends BaseScene implements View.OnClickListene
         }
 
         Resources resources = getResources2();
-        Assert.assertNotNull(resources);
+        AssertUtils.assertNotNull(resources);
 
         mThumb.load(EhCacheKeyFactory.getThumbKey(gd.gid), gd.thumb);
         mTitle.setText(EhUtils.getSuitableTitle(gd));
@@ -830,17 +869,28 @@ public class GalleryDetailScene extends BaseScene implements View.OnClickListene
             mNoTags.setVisibility(View.GONE);
         }
 
-        int colorTag = resources.getColor(R.color.colorPrimary);
-        int colorName = resources.getColor(R.color.purple_a400);
+        EhTagDatabase ehTags = Settings.getShowTagTranslations() ? EhTagDatabase.getInstance() : null;
+        int colorTag = AttrResources.getAttrColor(context, R.attr.tagBackgroundColor);
+        int colorName = AttrResources.getAttrColor(context, R.attr.tagGroupBackgroundColor);
         for (GalleryTagGroup tg : tagGroups) {
             LinearLayout ll = (LinearLayout) inflater.inflate(R.layout.gallery_tag_group, mTags, false);
             ll.setOrientation(LinearLayout.HORIZONTAL);
             mTags.addView(ll);
 
+            String readableTagName = null;
+            if (ehTags != null) {
+                readableTagName = ehTags.getTranslation("n:" + tg.groupName);
+            }
+
             TextView tgName = (TextView) inflater.inflate(R.layout.item_gallery_tag, ll, false);
             ll.addView(tgName);
-            tgName.setText(tg.groupName);
+            tgName.setText(readableTagName != null ? readableTagName : tg.groupName);
             tgName.setBackgroundDrawable(new RoundSideRectDrawable(colorName));
+
+            String prefix = EhTagDatabase.namespaceToPrefix(tg.groupName);
+            if (prefix == null) {
+                prefix = "";
+            }
 
             AutoWrapLayout awl = new AutoWrapLayout(context);
             ll.addView(awl, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -848,7 +898,13 @@ public class GalleryDetailScene extends BaseScene implements View.OnClickListene
                 TextView tag = (TextView) inflater.inflate(R.layout.item_gallery_tag, awl, false);
                 awl.addView(tag);
                 String tagStr = tg.getTagAt(j);
-                tag.setText(tagStr);
+
+                String readableTag = null;
+                if (ehTags != null) {
+                    readableTag = ehTags.getTranslation(prefix + tagStr);
+                }
+
+                tag.setText(readableTag != null ? readableTag : tagStr);
                 tag.setBackgroundDrawable(new RoundSideRectDrawable(colorTag));
                 tag.setTag(R.id.tag, tg.groupName + ":" + tagStr);
                 tag.setOnClickListener(this);
@@ -961,7 +1017,7 @@ public class GalleryDetailScene extends BaseScene implements View.OnClickListene
 
     private String getAllRatingText(float rating, int ratingCount) {
         Resources resources = getResources2();
-        Assert.assertNotNull(resources);
+        AssertUtils.assertNotNull(resources);
         return resources.getString(R.string.rating_text, getRatingText(rating, resources), rating, ratingCount);
     }
 
@@ -984,7 +1040,7 @@ public class GalleryDetailScene extends BaseScene implements View.OnClickListene
         }
 
         Context context = getContext2();
-        Assert.assertNotNull(context);
+        AssertUtils.assertNotNull(context);
         PopupMenu popup = new PopupMenu(context, mOtherActions, Gravity.TOP);
         mPopupMenu = popup;
         popup.getMenuInflater().inflate(R.menu.scene_gallery_detail, popup.getMenu());
@@ -1533,9 +1589,17 @@ public class GalleryDetailScene extends BaseScene implements View.OnClickListene
     private void onModifyFavoritesSuccess(boolean addOrRemove) {
         mModifingFavorites = false;
         if (mGalleryDetail != null) {
-            mGalleryDetail.isFavorited = !addOrRemove;
+            mGalleryDetail.isFavorited = !addOrRemove && mGalleryDetail.favoriteName != null;
             updateFavoriteDrawable();
         }
+    }
+
+    private void onModifyFavoritesFailure(boolean addOrRemove) {
+        mModifingFavorites = false;
+    }
+
+    private void onModifyFavoritesCancel(boolean addOrRemove) {
+        mModifingFavorites = false;
     }
 
     private class ModifyFavoritesListener extends EhCallback<GalleryDetailScene, Void> {
@@ -1564,10 +1628,19 @@ public class GalleryDetailScene extends BaseScene implements View.OnClickListene
         public void onFailure(Exception e) {
             showTip(mAddOrRemove ? R.string.remove_from_favorite_failure :
                     R.string.add_to_favorite_failure, LENGTH_SHORT);
+            GalleryDetailScene scene = getScene();
+            if (scene != null) {
+                scene.onModifyFavoritesFailure(mAddOrRemove);
+            }
         }
 
         @Override
-        public void onCancel() {}
+        public void onCancel() {
+            GalleryDetailScene scene = getScene();
+            if (scene != null) {
+                scene.onModifyFavoritesCancel(mAddOrRemove);
+            }
+        }
 
         @Override
         public boolean isInstance(SceneFragment scene) {
@@ -1790,7 +1863,13 @@ public class GalleryDetailScene extends BaseScene implements View.OnClickListene
                 r.allowScanningByMediaScanner();
                 r.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
                 DownloadManager dm = (DownloadManager) context.getSystemService(Context.DOWNLOAD_SERVICE);
-                dm.enqueue(r);
+                if (dm != null) {
+                    try {
+                        dm.enqueue(r);
+                    } catch (Throwable e) {
+                        ExceptionUtils.throwIfFatal(e);
+                    }
+                }
             }
 
             if (mDialog != null) {

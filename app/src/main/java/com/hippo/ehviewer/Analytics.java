@@ -17,15 +17,32 @@
 package com.hippo.ehviewer;
 
 import android.content.Context;
-
-import com.google.analytics.tracking.android.EasyTracker;
+import android.os.Bundle;
+import com.google.firebase.analytics.FirebaseAnalytics;
+import com.hippo.scene.SceneFragment;
 
 
 public final class Analytics {
 
+    private static FirebaseAnalytics analytics;
+
     private Analytics() {}
 
     public static void start(Context context) {
-        EasyTracker.getInstance(context).set("&uid", Settings.getUserID());
+        analytics = FirebaseAnalytics.getInstance(context);
+        analytics.setUserId(Settings.getUserID());
+    }
+
+    public static boolean isEnabled() {
+        return analytics != null && Settings.getEnableAnalytics();
+    }
+
+    public static void onSceneView(SceneFragment scene) {
+        if (isEnabled()) {
+            Bundle bundle = new Bundle();
+            bundle.putString("scene_simple_class", scene.getClass().getSimpleName());
+            bundle.putString("scene_class", scene.getClass().getName());
+            analytics.logEvent("scene_view", bundle);
+        }
     }
 }

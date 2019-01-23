@@ -21,6 +21,7 @@ import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.Parcelable;
 import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 import android.support.v7.widget.RecyclerView;
 import android.util.AttributeSet;
 import android.util.Log;
@@ -30,7 +31,7 @@ import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 import android.widget.Toast;
-
+import com.hippo.android.resource.AttrResources;
 import com.hippo.easyrecyclerview.EasyRecyclerView;
 import com.hippo.easyrecyclerview.FastScroller;
 import com.hippo.easyrecyclerview.HandlerDrawable;
@@ -43,9 +44,7 @@ import com.hippo.util.ExceptionUtils;
 import com.hippo.view.ViewTransition;
 import com.hippo.yorozuya.IntIdGenerator;
 import com.hippo.yorozuya.LayoutUtils;
-import com.hippo.yorozuya.ResourcesUtils;
 import com.hippo.yorozuya.collect.IntList;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -92,7 +91,7 @@ public class ContentLayout extends FrameLayout {
 
         mFastScroller.attachToRecyclerView(mRecyclerView);
         HandlerDrawable drawable = new HandlerDrawable();
-        drawable.setColor(ResourcesUtils.getAttrColor(context, R.attr.colorAccent));
+        drawable.setColor(AttrResources.getAttrColor(context, R.attr.widgetColorThemeAccent));
         mFastScroller.setHandlerDrawable(drawable);
 
         mRefreshLayout.setHeaderColorSchemeResources(
@@ -303,7 +302,7 @@ public class ContentLayout extends FrameLayout {
             mRefreshLayout = contentLayout.mRefreshLayout;
             mRecyclerView = contentLayout.mRecyclerView;
 
-            Drawable drawable = DrawableManager.getDrawable(getContext(), R.drawable.big_weird_face);
+            Drawable drawable = DrawableManager.getVectorDrawable(getContext(), R.drawable.big_sad_pandroid);
             drawable.setBounds(0, 0, drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight());
             mTipView.setCompoundDrawables(null, drawable, null, null);
 
@@ -368,6 +367,15 @@ public class ContentLayout extends FrameLayout {
          */
         public E getDataAt(int location) {
             return mData.get(location);
+        }
+
+        @Nullable
+        public E getDataAtEx(int location) {
+            if (location >= 0 && location < mData.size()) {
+                return mData.get(location);
+            } else {
+                return null;
+            }
         }
 
         public int size() {
@@ -709,7 +717,7 @@ public class ContentLayout extends FrameLayout {
         }
 
         public void showText(CharSequence text) {
-            mTipView.setText(text);
+            mTipView.setText(text + "\n\n" + getContext().getString(R.string.help_route));
             mViewTransition.showView(2);
         }
 
@@ -890,12 +898,13 @@ public class ContentLayout extends FrameLayout {
                 mTipView.setText(bundle.getString(KEY_TIP));
 
                 mSavedDataId = bundle.getInt(KEY_DATA);
+                ArrayList<E> newData = null;
                 EhApplication app = (EhApplication) getContext().getApplicationContext();
                 if (mSavedDataId != IntIdGenerator.INVALID_ID) {
-                    ArrayList<E> data = (ArrayList<E>) app.removeGlobalStuff(mSavedDataId);
+                    newData = (ArrayList<E>) app.removeGlobalStuff(mSavedDataId);
                     mSavedDataId = IntIdGenerator.INVALID_ID;
-                    if (data != null) {
-                        mData = data;
+                    if (newData != null) {
+                        mData = newData;
                     }
                 }
 
@@ -904,6 +913,17 @@ public class ContentLayout extends FrameLayout {
                 mStartPage = bundle.getInt(KEY_START_PAGE);
                 mEndPage = bundle.getInt(KEY_END_PAGE);
                 mPages = bundle.getInt(KEY_PAGES);
+
+                notifyDataSetChanged();
+
+                if (newData == null) {
+                    mPageDivider.clear();
+                    mStartPage = 0;
+                    mEndPage = 0;
+                    mPages = 0;
+                    firstRefresh();
+                }
+
                 return bundle.getParcelable(KEY_SUPER);
             } else {
                 return state;

@@ -30,16 +30,13 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.TextView;
-
 import com.hippo.ehviewer.EhApplication;
 import com.hippo.ehviewer.R;
 import com.hippo.ehviewer.client.EhCookieStore;
 import com.hippo.ehviewer.client.EhUrl;
 import com.hippo.ehviewer.client.EhUtils;
+import com.hippo.yorozuya.AssertUtils;
 import com.hippo.yorozuya.ViewUtils;
-
-import junit.framework.Assert;
-
 import okhttp3.Cookie;
 
 public class CookieSignInScene extends SolidScene implements EditText.OnEditorActionListener,
@@ -75,13 +72,13 @@ public class CookieSignInScene extends SolidScene implements EditText.OnEditorAc
         View view = inflater.inflate(R.layout.scene_cookie_sign_in, container, false);
         mIpbMemberIdLayout = (TextInputLayout) ViewUtils.$$(view, R.id.ipb_member_id_layout);
         mIpbMemberId = mIpbMemberIdLayout.getEditText();
-        Assert.assertNotNull(mIpbMemberId);
+        AssertUtils.assertNotNull(mIpbMemberId);
         mIpbPassHashLayout = (TextInputLayout) ViewUtils.$$(view, R.id.ipb_pass_hash_layout);
         mIpbPassHash = mIpbPassHashLayout.getEditText();
-        Assert.assertNotNull(mIpbPassHash);
+        AssertUtils.assertNotNull(mIpbPassHash);
         mIgneousLayout = (TextInputLayout) ViewUtils.$$(view, R.id.igneous_layout);
         mIgneous = mIgneousLayout.getEditText();
-        Assert.assertNotNull(mIgneous);
+        AssertUtils.assertNotNull(mIgneous);
         mOk = ViewUtils.$$(view, R.id.ok);
 
         mIpbPassHash.setOnEditorActionListener(this);
@@ -90,7 +87,7 @@ public class CookieSignInScene extends SolidScene implements EditText.OnEditorAc
 
         // Try to get old version cookie info
         Context context = getContext2();
-        Assert.assertNotNull(context);
+        AssertUtils.assertNotNull(context);
         SharedPreferences sharedPreferences = context.getSharedPreferences("eh_info", 0);
         String ipbMemberId = sharedPreferences.getString("ipb_member_id", null);
         String ipbPassHash = sharedPreferences.getString("ipb_pass_hash", null);
@@ -199,12 +196,6 @@ public class CookieSignInScene extends SolidScene implements EditText.OnEditorAc
         } else {
             mIpbPassHashLayout.setError(null);
         }
-        if (TextUtils.isEmpty(igneous)) {
-            mIgneousLayout.setError(getString(R.string.text_is_empty));
-            return;
-        } else {
-            mIgneousLayout.setError(null);
-        }
 
         hideSoftInput();
 
@@ -241,11 +232,13 @@ public class CookieSignInScene extends SolidScene implements EditText.OnEditorAc
         EhUtils.signOut(context);
 
         EhCookieStore store = EhApplication.getEhCookieStore(context);
-        store.add(newCookie(EhCookieStore.KEY_IPD_MEMBER_ID, id, EhUrl.DOMAIN_E));
-        store.add(newCookie(EhCookieStore.KEY_IPD_MEMBER_ID, id, EhUrl.DOMAIN_EX));
-        store.add(newCookie(EhCookieStore.KEY_IPD_PASS_HASH, hash, EhUrl.DOMAIN_E));
-        store.add(newCookie(EhCookieStore.KEY_IPD_PASS_HASH, hash, EhUrl.DOMAIN_EX));
-        store.add(newCookie(EhCookieStore.KEY_IGNEOUS, igneous, EhUrl.DOMAIN_E));
-        store.add(newCookie(EhCookieStore.KEY_IGNEOUS, igneous, EhUrl.DOMAIN_EX));
+        store.addCookie(newCookie(EhCookieStore.KEY_IPD_MEMBER_ID, id, EhUrl.DOMAIN_E));
+        store.addCookie(newCookie(EhCookieStore.KEY_IPD_MEMBER_ID, id, EhUrl.DOMAIN_EX));
+        store.addCookie(newCookie(EhCookieStore.KEY_IPD_PASS_HASH, hash, EhUrl.DOMAIN_E));
+        store.addCookie(newCookie(EhCookieStore.KEY_IPD_PASS_HASH, hash, EhUrl.DOMAIN_EX));
+        if (!igneous.isEmpty()) {
+            store.addCookie(newCookie(EhCookieStore.KEY_IGNEOUS, igneous, EhUrl.DOMAIN_E));
+            store.addCookie(newCookie(EhCookieStore.KEY_IGNEOUS, igneous, EhUrl.DOMAIN_EX));
+        }
     }
 }

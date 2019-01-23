@@ -18,23 +18,17 @@ package com.hippo.ehviewer.client;
 
 import android.content.Context;
 import android.os.AsyncTask;
-
 import com.hippo.ehviewer.EhApplication;
 import com.hippo.ehviewer.client.data.GalleryInfo;
 import com.hippo.ehviewer.client.exception.CancelledException;
+import com.hippo.util.ExceptionUtils;
+import com.hippo.util.IoThreadPoolExecutor;
 import com.hippo.yorozuya.SimpleHandler;
-import com.hippo.yorozuya.thread.PriorityThreadFactory;
-
 import java.io.File;
 import java.util.List;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-
 import okhttp3.Call;
 import okhttp3.OkHttpClient;
 
@@ -66,12 +60,7 @@ public class EhClient {
     private final OkHttpClient mOkHttpClient;
 
     public EhClient(Context context) {
-        int poolSize = 3;
-        BlockingQueue<Runnable> requestWorkQueue = new LinkedBlockingQueue<>();
-        ThreadFactory threadFactory = new PriorityThreadFactory(TAG,
-                android.os.Process.THREAD_PRIORITY_BACKGROUND);
-        mRequestThreadPool = new ThreadPoolExecutor(poolSize, poolSize,
-                1L, TimeUnit.SECONDS, requestWorkQueue, threadFactory);
+        mRequestThreadPool = IoThreadPoolExecutor.getInstance();
         mOkHttpClient = EhApplication.getOkHttpClient(context);
     }
 
@@ -153,7 +142,7 @@ public class EhClient {
             try {
                 switch (mMethod) {
                     case METHOD_SIGN_IN:
-                        return EhEngine.signIn(this, mOkHttpClient, (String) params[0], (String) params[1]);
+                        return EhEngine.signIn(this, mOkHttpClient, (String) params[0], (String) params[1], (String) params[2], (String) params[3]);
                     case METHOD_GET_GALLERY_LIST:
                         return EhEngine.getGalleryList(this, mOkHttpClient, (String) params[0]);
                     case METHOD_FILL_GALLERY_LIST_BY_API:
@@ -193,7 +182,8 @@ public class EhClient {
                     default:
                         return new IllegalStateException("Can't detect method " + mMethod);
                 }
-            } catch (Exception e) {
+            } catch (Throwable e) {
+                ExceptionUtils.throwIfFatal(e);
                 return e;
             }
         }

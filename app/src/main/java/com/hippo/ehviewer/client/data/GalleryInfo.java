@@ -63,8 +63,8 @@ public class GalleryInfo implements Parcelable {
 
     public static final Pattern[] S_LANG_PATTERNS = {
             Pattern.compile("[(\\[]eng(?:lish)?[)\\]]", Pattern.CASE_INSENSITIVE),
-            // [(（\[]ch(?:inese)?[)）\]]|[汉漢]化|中[国國][语語]|中文
-            Pattern.compile("[(\uFF08\\[]ch(?:inese)?[)\uFF09\\]]|[汉漢]化|中[国國][语語]|中文", Pattern.CASE_INSENSITIVE),
+            // [(（\[]ch(?:inese)?[)）\]]|[汉漢]化|中[国國][语語]|中文|中国翻訳
+            Pattern.compile("[(\uFF08\\[]ch(?:inese)?[)\uFF09\\]]|[汉漢]化|中[国國][语語]|中文|中国翻訳", Pattern.CASE_INSENSITIVE),
             Pattern.compile("[(\\[]spanish[)\\]]|[(\\[]Español[)\\]]", Pattern.CASE_INSENSITIVE),
             Pattern.compile("[(\\[]korean?[)\\]]", Pattern.CASE_INSENSITIVE),
             Pattern.compile("[(\\[]rus(?:sian)?[)\\]]", Pattern.CASE_INSENSITIVE),
@@ -79,6 +79,23 @@ public class GalleryInfo implements Parcelable {
             Pattern.compile("[(\\[]dutch[)\\]]", Pattern.CASE_INSENSITIVE),
     };
 
+    public static final String[] S_LANG_TAGS = {
+        "language:english",
+        "language:chinese",
+        "language:spanish",
+        "language:korean",
+        "language:russian",
+        "language:french",
+        "language:portuguese",
+        "language:thai",
+        "language:german",
+        "language:italian",
+        "language:vietnamese",
+        "language:polish",
+        "language:hungarian",
+        "language:dutch",
+    };
+
     public long gid ;
     public String token;
     public String title;
@@ -90,6 +107,7 @@ public class GalleryInfo implements Parcelable {
     public float rating;
     @Nullable
     public String[] simpleTags;
+    public int pages;
 
     public int thumbWidth;
     public int thumbHeight;
@@ -103,7 +121,29 @@ public class GalleryInfo implements Parcelable {
      */
     public String simpleLanguage;
 
+    public boolean rated;
+
     public final void generateSLang() {
+        if (simpleTags != null) {
+            generateSLangFromTags();
+        }
+        if (simpleLanguage == null && title != null) {
+            generateSLangFromTitle();
+        }
+    }
+
+    private void generateSLangFromTags() {
+        for (String tag : simpleTags) {
+            for (int i = 0; i < S_LANGS.length; i++) {
+                if (S_LANG_TAGS[i].equals(tag)) {
+                    simpleLanguage = S_LANGS[i];
+                    return;
+                }
+            }
+        }
+    }
+
+    private void generateSLangFromTitle() {
         for (int i = 0; i < S_LANGS.length; i++) {
             if (S_LANG_PATTERNS[i].matcher(title).find()) {
                 simpleLanguage = S_LANGS[i];

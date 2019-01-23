@@ -53,6 +53,7 @@ import com.hippo.streampipe.InputStreamPipe;
 import com.hippo.streampipe.OutputStreamPipe;
 import com.hippo.unifile.UniFile;
 import com.hippo.util.ExceptionUtils;
+import com.hippo.util.IoThreadPoolExecutor;
 import com.hippo.yorozuya.IOUtils;
 import com.hippo.yorozuya.MathUtils;
 import com.hippo.yorozuya.OSUtils;
@@ -80,6 +81,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import okhttp3.Call;
+import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -430,11 +432,11 @@ public final class SpiderQueen implements Runnable {
     }
 
     public Object forceRequest(int index) {
-        return request(index, true, false);
+        return request(index, true, true, false);
     }
 
     public Object request(int index) {
-        return request(index, false, true);
+        return request(index, true, false, true);
     }
 
     private int getPageState(int index) {
@@ -483,7 +485,7 @@ public final class SpiderQueen implements Runnable {
      * Float for download percent<br>
      * null for wait
      */
-    private Object request(int index, boolean force, boolean addNeighbor) {
+    private Object request(int index, boolean ignoreError, boolean force, boolean addNeighbor) {
         if (mQueenThread == null) {
             return null;
         }
@@ -492,7 +494,8 @@ public final class SpiderQueen implements Runnable {
         int state = getPageState(index);
 
         // Fix state for force
-        if (force && (state == STATE_FINISHED || state == STATE_FAILED)) {
+        if ((force && (state == STATE_FINISHED || state == STATE_FAILED)) ||
+            (ignoreError && state == STATE_FAILED)) {
             // Update state to none at once
             updatePageState(index, STATE_NONE);
             state = STATE_NONE;
@@ -518,7 +521,7 @@ public final class SpiderQueen implements Runnable {
                 } else {
                     size = Integer.MAX_VALUE;
                 }
-                for (int i = index + 1, n = index + i + mPreloadNumber; i < n && i < size; i++) {
+                for (int i = index + 1, n = index + 1 + mPreloadNumber; i < n && i < size; i++) {
                     if (STATE_NONE == getPageState(i)) {
                         mRequestPageQueue2.add(i);
                     }
@@ -667,7 +670,7 @@ public final class SpiderQueen implements Runnable {
                     writeSpiderInfoToLocal(spiderInfo);
                     return null;
                 }
-            }.execute();
+            }.executeOnExecutor(IoThreadPoolExecutor.getInstance());
         }
     }
 
@@ -713,10 +716,13 @@ public final class SpiderQueen implements Runnable {
         spiderInfo.pages = GalleryDetailParser.parsePages(body);
         spiderInfo.previewPages = GalleryDetailParser.parsePreviewPages(body);
         PreviewSet previewSet = GalleryDetailParser.parsePreviewSet(body);
-        if ((index >= 0 && index < spiderInfo.pages - 1) || (index == 0 && spiderInfo.pages == 1)) {
-            spiderInfo.previewPerPage = previewSet.size();
-        } else {
-            spiderInfo.previewPerPage = Math.max(spiderInfo.previewPerPage, previewSet.size());
+
+        if (previewSet.size() > 0) {
+            if (index == 0) {
+                spiderInfo.previewPerPage = previewSet.size();
+            } else {
+                spiderInfo.previewPerPage = previewSet.getPosition(0) / index;
+            }
         }
 
         for (int i = 0, n = previewSet.size(); i < n; i++) {
@@ -744,7 +750,8 @@ public final class SpiderQueen implements Runnable {
             spiderInfo.pTokenMap = new SparseArray<>(spiderInfo.pages);
             readPreviews(body, 0, spiderInfo);
             return spiderInfo;
-        } catch (Exception e) {
+        } catch (Throwable e) {
+            ExceptionUtils.throwIfFatal(e);
             return null;
         }
     }
@@ -761,6 +768,9 @@ public final class SpiderQueen implements Runnable {
             previewIndex = index / spiderInfo.previewPerPage;
         } else {
             previewIndex = 0;
+        }
+        if (spiderInfo.previewPages > 0) {
+            previewIndex = Math.min(previewIndex, spiderInfo.previewPages - 1);
         }
 
         try {
@@ -783,7 +793,8 @@ public final class SpiderQueen implements Runnable {
                 pToken = spiderInfo.pTokenMap.get(index);
             }
             return pToken;
-        } catch (Exception e) {
+        } catch (Throwable e) {
+            ExceptionUtils.throwIfFatal(e);
             return null;
         }
     }
@@ -795,7 +806,8 @@ public final class SpiderQueen implements Runnable {
             UniFile file = downloadDir.createFile(SPIDER_INFO_FILENAME);
             try {
                 spiderInfo.write(file.openOutputStream());
-            } catch (Exception e) {
+            } catch (Throwable e) {
+                ExceptionUtils.throwIfFatal(e);
                 // Ignore
             }
         }
@@ -1026,7 +1038,7 @@ public final class SpiderQueen implements Runnable {
             return pageUrl;
         }
 
-        private GalleryPageParser.Result getImageUrl(int index, String pageUrl) throws Exception {
+        private GalleryPageParser.Result getImageUrl(int index, String pageUrl) throws Throwable {
             GalleryPageParser.Result result = EhEngine.getGalleryPage(null, mHttpClient, pageUrl);
             if (StringUtils.endsWith(result.imageUrl, URL_509_SUFFIX_ARRAY)) {
                 // Get 509
@@ -1048,6 +1060,8 @@ public final class SpiderQueen implements Runnable {
             boolean interrupt = false;
             boolean leakSkipHathKey = false;
 
+            Log.d("TAG", "index = " + index);
+
             // Try twice
             for (int i = 0; i < 5; i++) {
                 if (leakSkipHathKey) {
@@ -1061,7 +1075,8 @@ public final class SpiderQueen implements Runnable {
                     result = getImageUrl(index, pageUrl);
                 } catch (Image509Exception e) {
                     error = GetText.getString(R.string.error_509);
-                } catch (Exception e) {
+                } catch (Throwable e) {
+                    ExceptionUtils.throwIfFatal(e);
                     error = ExceptionUtils.getReadableString(e);
                 }
                 if (result == null) {
@@ -1112,17 +1127,26 @@ public final class SpiderQueen implements Runnable {
 
                     Call call = mHttpClient.newCall(new EhRequestBuilder(imageUrl).build());
                     Response response = call.execute();
+                    ResponseBody responseBody = response.body();
+
                     if (response.code() >= 400) {
                         // Maybe 404
-                        response.body().close();
+                        response.close();
                         error = "Bad code: " + response.code();
                         continue;
                     }
-                    ResponseBody responseBody = response.body();
+
+                    if (responseBody == null) {
+                        error = "Empty response body";
+                        continue;
+                    }
 
                     // Get extension
-                    String extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(
-                            responseBody.contentType().toString());
+                    String extension = null;
+                    MediaType mediaType = responseBody.contentType();
+                    if (mediaType != null) {
+                        extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(mediaType.toString());
+                    }
                     // Ensure extension
                     if (!Utilities.contain(GalleryProvider2.SUPPORT_IMAGE_EXTENSIONS, extension)) {
                         extension = GalleryProvider2.SUPPORT_IMAGE_EXTENSIONS[0];
@@ -1133,7 +1157,7 @@ public final class SpiderQueen implements Runnable {
                     if (null == pipe) {
                         // Can't get pipe
                         error = GetText.getString(R.string.error_write_failed);
-                        response.body().close();
+                        response.close();
                         break;
                     }
 
@@ -1148,7 +1172,7 @@ public final class SpiderQueen implements Runnable {
                     while (!Thread.currentThread().isInterrupted()) {
                         int bytesRead = is.read(data);
                         if (bytesRead == -1) {
-                            response.body().close();
+                            response.close();
                             break;
                         }
                         os.write(data, 0, bytesRead);
@@ -1188,6 +1212,7 @@ public final class SpiderQueen implements Runnable {
                     updatePageState(index, STATE_FINISHED);
                     return true;
                 } catch (IOException e) {
+                    e.printStackTrace();
                     error = GetText.getString(R.string.error_socket);
                 } finally {
                     IOUtils.closeQuietly(is);
@@ -1400,7 +1425,7 @@ public final class SpiderQueen implements Runnable {
                     // Can't find the file, it might be removed from cache,
                     // Reset it state and request it
                     updatePageState(index, STATE_NONE, null);
-                    request(index, false, false);
+                    request(index, false, false, false);
                     continue;
                 }
 

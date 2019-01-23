@@ -25,13 +25,10 @@ import android.support.v4.app.FragmentManager;
 import android.support.v4.app.FragmentTransaction;
 import android.util.Log;
 import android.view.View;
-
 import com.hippo.ehviewer.R;
 import com.hippo.ehviewer.ui.EhActivity;
+import com.hippo.yorozuya.AssertUtils;
 import com.hippo.yorozuya.IntIdGenerator;
-
-import junit.framework.Assert;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -164,8 +161,10 @@ public abstract class StageActivity extends EhActivity {
         if (savedInstanceState != null) {
             mStageId = savedInstanceState.getInt(KEY_STAGE_ID, IntIdGenerator.INVALID_ID);
             ArrayList<String> list = savedInstanceState.getStringArrayList(KEY_SCENE_TAG_LIST);
-            mSceneTagList.addAll(list);
-            mDelaySceneTagList.addAll(list);
+            if (list != null) {
+                mSceneTagList.addAll(list);
+                mDelaySceneTagList.addAll(list);
+            }
             mIdGenerator.lazySet(savedInstanceState.getInt(KEY_NEXT_ID));
         }
 
@@ -229,6 +228,9 @@ public abstract class StageActivity extends EhActivity {
     }
 
     protected void onUnregister() {
+    }
+
+    protected void onTransactScene() {
     }
 
     public int getStageId() {
@@ -311,6 +313,7 @@ public abstract class StageActivity extends EhActivity {
 
                     // Commit
                     transaction.commitAllowingStateLoss();
+                    onTransactScene();
 
                     // New arguments
                     if (args != null && fragment instanceof SceneFragment) {
@@ -330,7 +333,7 @@ public abstract class StageActivity extends EhActivity {
             String tag = mSceneTagList.get(mSceneTagList.size() - 1);
             Fragment fragment = fragmentManager.findFragmentByTag(tag);
             if (fragment != null) {
-                Assert.assertTrue(SceneFragment.class.isInstance(fragment));
+                AssertUtils.assertTrue(SceneFragment.class.isInstance(fragment));
                 currentScene = (SceneFragment) fragment;
             }
         }
@@ -384,6 +387,7 @@ public abstract class StageActivity extends EhActivity {
 
         // Commit
         transaction.commitAllowingStateLoss();
+        onTransactScene();
 
         // Check request
         if (announcer.requestFrom != null) {
@@ -460,6 +464,7 @@ public abstract class StageActivity extends EhActivity {
 
         // Commit
         transaction.commitAllowingStateLoss();
+        onTransactScene();
 
         if (!createNewScene && args != null) {
             // TODO Call onNewArguments when view created ?
@@ -538,6 +543,7 @@ public abstract class StageActivity extends EhActivity {
         }
         transaction.remove(scene);
         transaction.commitAllowingStateLoss();
+        onTransactScene();
 
         // Remove tag
         mSceneTagList.remove(index);
@@ -562,6 +568,7 @@ public abstract class StageActivity extends EhActivity {
         transaction.detach(fragment);
         transaction.attach(fragment);
         transaction.commitAllowingStateLoss();
+        onTransactScene();
     }
 
     @Override
